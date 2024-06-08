@@ -71,16 +71,13 @@ class DataModule(ABC):
     def test_dataloader(self) -> DataLoader:
         return _get_dataloader(self.ds_test, shuffle=False, **self.dataloader_kwargs)
 
-# from qm9.py
 
-def _get_relative_pos(qm9_graph: DGLGraph) -> Tensor:
+
+def _get_relative_pos(qm9_graph: DGLGraph) -> Tensor: # from qm9.py
     x = qm9_graph.ndata['pos']
     src, dst = qm9_graph.edges()
     rel_pos = x[dst] - x[src]
     return rel_pos
-
-
-# Python Chat
 
 class LeashDataset(Dataset):
     def __init__(self, smiles_list, targets):
@@ -102,10 +99,13 @@ class LeashDataset(Dataset):
 
     def __getitem__(self, idx):
         smiles = self.smiles_list[idx]
-        target = self.targets[idx]
+        target = self.targets[idx] if self.targets is not None else None
         mol = Chem.MolFromSmiles(smiles)
         graph = self.mol_to_dgl_graph(mol)
-        return graph, torch.tensor(target, dtype=torch.float32)
+        if target is not None:
+            return graph, torch.tensor(target, dtype=torch.float32)
+        else:
+            return graph
 
     def mol_to_dgl_graph(self, mol):
         g = dgl.DGLGraph()
@@ -132,18 +132,8 @@ class LeashDataset(Dataset):
         
         return g
 
-
-def custom_collate(samples):
-    graphs, targets = map(list, zip(*samples))
-    batched_graph = dgl.batch(graphs)
-
-    node_feats = {'0': batched_graph.ndata['feat']}
-    edge_feats = {'0': batched_graph.edata['feat']}
-
-    targets = torch.stack(targets)
-
-    return batched_graph, node_feats, edge_feats, targets
-
+#### Continue from Update the DataModule Class: onward
+#### edit so it gives positions
 
 class CustomDataModule(DataModule):
     NODE_FEATURE_DIM = 6  # 5 (one-hot atom type) + 1 (number of protons)
@@ -157,12 +147,12 @@ class CustomDataModule(DataModule):
                  num_workers: int = 8,
                  **kwargs):
         self.data_dir = data_dir  # This needs to be before __init__ so that prepare_data has access to it
-        super().__init__(batch_size=batch_size, num_workers=num_workers, collate_fn=custom_collate)
+        super().__init__(batch_size=batch_size, num_workers=num_workers, collate_fn=self._collate)
         self.smiles_list = smiles_list
         self.targets = targets
         self.batch_size = batch_size
 
-        full_dataset = CustomMoleculeDataset(smiles_list, targets)
+        full_dataset = LeashDataset(smiles_list, targets)
         self.ds_train, self.ds_val, self.ds_test = random_split(full_dataset, self._get_split_sizes(full_dataset),
                                                                 generator=torch.Generator().manual_seed(0))
 
@@ -176,6 +166,23 @@ class CustomDataModule(DataModule):
         len_val = int(0.1 * len_full)
         len_test = len_full - len_train - len_val
         return len_train, len_val, len_test
+    
+    def _collate(self, samples):
+        if all(isinstance(sample, tuple) and len(sample) == 2 for sample in samples):
+            graphs, targets = map(list, zip(*samples))
+            batched_graph = dgl.batch(graphs)
+            edge_feats = {'0': batched_graph.edata['feat']}
+            batched_graph.edata['rel_pos'] = _get_relative_pos(batched_graph) # --- maybe add in positions later
+            node_feats = {'0': batched_graph.ndata['feat']}
+            targets = torch.stack(targets) # qm9.py uses torch.cat()
+            return batched_graph, node_feats, edge_feats, targets
+        else :
+            graphs = samples
+            batched_graph = dgl.batch(graphs)
+            edge_feats = {'0': batched_graph.edata['feat']}
+            batched_graph.edata['rel_pos'] = _get_relative_pos(batched_graph) # --- maybe add in positions later
+            node_feats = {'0': batched_graph.ndata['feat']}
+            return batched_graph, node_feats, edge_feats
 
     @staticmethod
     def add_argparse_args(parent_parser):
@@ -185,83 +192,3 @@ class CustomDataModule(DataModule):
 
     def __repr__(self):
         return f'CustomDataModule()'
-
-
-# Copilot
-
-class CustomDataModule(DataModule):
-    """
-    Datamodule for your custom dataset.
-    """
-
-    NODE_FEATURE_DIM = 6  # Update this based on your dataset
-    EDGE_FEATURE_DIM = 4  # Update this based on your dataset
-
-    def __init__(self,
-                 data_dir: pathlib.Path,
-                 task: str = 'custom_task',
-                 batch_size: int = 240,
-                 num_workers: int = 8,
-                 num_degrees: int = 4,
-                 amp: bool = False,
-                 precompute_bases: bool = False,
-                 **kwargs):
-        self.data_dir = data_dir
-        super().__init__(batch_size=batch_size, num_workers=num_workers, collate_fn=self._collate)
-        self.amp = amp
-        self.task = task
-        self.batch_size = batch_size
-        self.num_degrees = num_degrees
-
-        # Load your dataset here
-        # You can use any format that suits your data, such as CSV, NPZ, etc.
-        # Make sure to convert your SMILES strings to DGLGraphs
-        # full_dataset = YourCustomDataset()
-
-        # Split your dataset into training, validation, and test sets
-        # self.ds_train, self.ds_val, self.ds_test = random_split(full_dataset, _get_split_sizes(full_dataset),
-        #                                                         generator=torch.Generator().manual_seed(0))
-
-        # If your task is a regression task, you might want to normalize your targets
-        # train_targets = full_dataset.targets[self.ds_train.indices, full_dataset.label_keys[0]]
-        # self.targets_mean = train_targets.mean()
-        # self.targets_std = train_targets.std()
-
-    def _collate(self, samples):
-        # Define your collate function based on your dataset
-        # This function should return a tuple with:
-        # - A (batched) DGLGraph object
-        # - A dictionary of node features ({‘{degree}’: tensor})
-        # - A dictionary of edge features ({‘{degree}’: tensor})
-        # - (Optional) Precomputed bases as a dictionary
-        # - Labels as a tensor
-        pass
-
-    def _collate(self, samples):
-        graphs, y, *bases = map(list, zip(*samples))
-        batched_graph = dgl.batch(graphs)
-        edge_feats = {'0': batched_graph.edata['edge_attr'][:, :self.EDGE_FEATURE_DIM, None]}
-        batched_graph.edata['rel_pos'] = _get_relative_pos(batched_graph)
-        # get node features
-        node_feats = {'0': batched_graph.ndata['attr'][:, :self.NODE_FEATURE_DIM, None]}
-        targets = (torch.cat(y) - self.targets_mean) / self.targets_std
-
-        if bases:
-            # collate bases
-            all_bases = {
-                key: torch.cat([b[key] for b in bases[0]], dim=0)
-                for key in bases[0][0].keys()
-            }
-
-            return batched_graph, node_feats, edge_feats, all_bases, targets
-        else:
-            return batched_graph, node_feats, edge_feats, targets
-
-    @staticmethod
-    def add_argparse_args(parent_parser):
-        parser = parent_parser.add_argument_group("Custom dataset")
-        # Add any arguments specific to your dataset here
-        return parent_parser
-
-    def __repr__(self):
-        return f'Custom({self.task})'
