@@ -27,6 +27,7 @@ from torch.utils.data import DataLoader, DistributedSampler, Dataset
 from dgl import DGLGraph
 from torch import Tensor
 from rdkit import Chem
+from rdkit.Chem import AllChem
 import dgl
 from torch.utils.data import Dataset
 import torch
@@ -101,7 +102,16 @@ class LeashDataset(Dataset):
         smiles = self.smiles_list[idx]
         target = self.targets[idx] if self.targets is not None else None
         mol = Chem.MolFromSmiles(smiles)
-        graph = self.mol_to_dgl_graph(mol)
+        # replace the Dy representation of the DNA linker with a methyl group
+        # generate a molecule object that we can use to create our methyl group
+        Me = Chem.MolFromSmiles('C')
+        #create Dy mol object
+        Dy = Chem.MolFromSmiles('[Dy]')
+        # replace Dy with methyl group
+        new_mol = AllChem.ReplaceSubstructs(mol, Dy, Me)[0]
+        # good hygine 
+        Chem.SanitizeMol(new_mol)
+        graph = self.mol_to_dgl_graph(new_mol)
         if target is not None:
             return graph, torch.tensor(target, dtype=torch.float32)
         else:
@@ -180,15 +190,15 @@ class CustomDataModule(DataModule):
             graphs, targets = map(list, zip(*samples))
             batched_graph = dgl.batch(graphs)
             edge_feats = {'0': batched_graph.edata['feat']}
-            batched_graph.edata['rel_pos'] = _get_relative_pos(batched_graph) # --- maybe add in positions later
+            batched_graph.edata['rel_pos'] = _get_relative_pos(batched_graph)
             node_feats = {'0': batched_graph.ndata['feat']}
-            targets = torch.stack(targets) # qm9.py uses torch.cat()
+            targets = torch.cat(targets) # qm9.py uses torch.cat()
             return batched_graph, node_feats, edge_feats, targets
         else :
             graphs = samples
             batched_graph = dgl.batch(graphs)
             edge_feats = {'0': batched_graph.edata['feat']}
-            batched_graph.edata['rel_pos'] = _get_relative_pos(batched_graph) # --- maybe add in positions later
+            batched_graph.edata['rel_pos'] = _get_relative_pos(batched_graph)
             node_feats = {'0': batched_graph.ndata['feat']}
             return batched_graph, node_feats, edge_feats
 

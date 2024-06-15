@@ -27,6 +27,8 @@ import torch
 import torch.distributed as dist
 from torch import Tensor
 
+from sklearn.metrics import average_precision_score
+
 
 class Metric(ABC):
     """ Metric class with synchronization capabilities similar to TorchMetrics """
@@ -81,3 +83,21 @@ class MeanAbsoluteError(Metric):
 
     def _compute(self):
         return self.error / self.total
+    
+class MeanAveragePrecision(Metric) :
+    def __init__(self):
+        super().__init__()
+        self.add_state('ap', torch.tensor(0, dtype=torch.float32, device='cuda'))
+        self.add_state('num', torch.tensor(0, dtype=torch.int32, device='cuda'))
+        self.add_state('total', torch.tensor(0, dtype=torch.int32, device='cuda'))
+
+    def update(self, preds: Tensor, targets: Tensor):
+        preds = preds.detach()
+        n = preds.size
+        average_precision = average_precision_score(targets.cpu().numpy().flatten(), torch.sigmoid(preds).cpu().numpy().flatten())
+        self.num += n
+        self.ap += average_precision
+        self.total = n*average_precision
+
+    def _compute(self):
+        return self.total / self.num

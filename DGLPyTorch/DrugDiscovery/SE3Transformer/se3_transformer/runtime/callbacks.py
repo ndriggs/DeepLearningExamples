@@ -30,7 +30,7 @@ import numpy as np
 import torch
 
 from se3_transformer.runtime.loggers import Logger
-from se3_transformer.runtime.metrics import MeanAbsoluteError
+from se3_transformer.runtime.metrics import MeanAbsoluteError, MeanAveragePrecision
 
 
 class BaseCallback(ABC):
@@ -88,28 +88,35 @@ class LRSchedulerCallback(BaseCallback):
 class QM9MetricCallback(BaseCallback):
     """ Logs the rescaled mean absolute error for QM9 regression tasks """
 
-    def __init__(self, logger, targets_std, prefix=''):
+    def __init__(self, logger, prefix=''):
+        self.ap = MeanAveragePrecision()
         self.mae = MeanAbsoluteError()
         self.logger = logger
-        self.targets_std = targets_std
+        # self.targets_std = targets_std
         self.prefix = prefix
         self.best_mae = float('inf')
         self.last_mae = None
 
     def on_validation_step(self, input, target, pred):
-        self.mae(pred.detach(), target.detach())
+        # self.mae(pred.detach(), target.detach())
+        self.ap(pred.detach(), target.detach())
 
     def on_validation_end(self, epoch=None):
-        mae = self.mae.compute() * self.targets_std
-        logging.info(f'{self.prefix} MAE: {mae}')
-        self.logger.log_metrics({f'{self.prefix} MAE': mae}, epoch)
-        self.best_mae = min(self.best_mae, mae)
-        self.last_mae = mae
+        # mae = self.mae.compute() * self.targets_std
+        # logging.info(f'{self.prefix} MAE: {mae}')
+        # self.logger.log_metrics({f'{self.prefix} MAE': mae}, epoch)
+        # self.best_mae = min(self.best_mae, mae)
+        # self.last_mae = mae
+        ap = self.ap.compute() 
+        logging.info(f'{self.prefix} AP: {ap}')
+        self.logger.log_metrics({f'{self.prefix} AP': ap}, epoch)
+        self.best_mae = max(self.best_mae, ap)
+        self.last_mae = ap
 
     def on_fit_end(self):
         if self.best_mae != float('inf'):
-            self.logger.log_metrics({f'{self.prefix} best MAE': self.best_mae})
-            self.logger.log_metrics({f'{self.prefix} loss': self.last_mae / self.targets_std})
+            self.logger.log_metrics({f'{self.prefix} best AP': self.best_mae})
+            # self.logger.log_metrics({f'{self.prefix} loss': self.last_mae / self.targets_std})
 
 
 class QM9LRSchedulerCallback(LRSchedulerCallback):

@@ -219,7 +219,7 @@ if __name__ == '__main__':
         fiber_in=Fiber({0: datamodule.NODE_FEATURE_DIM}),
         fiber_out=Fiber({0: args.num_degrees * args.num_channels}),
         fiber_edge=Fiber({0: datamodule.EDGE_FEATURE_DIM}),
-        output_dim=1,
+        output_dim=3,
         tensor_cores=using_tensor_cores(args.amp),  # use Tensor Cores more effectively
         **vars(args)
     )
