@@ -28,6 +28,7 @@ import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import pandas as pd
 
 from se3_transformer.data_loading import CustomDataModule
 from se3_transformer.runtime import gpu_affinity
@@ -92,12 +93,21 @@ if __name__ == '__main__':
     if args.wandb:
         loggers.append(WandbLogger(name=f'QM9({args.task})', save_dir=args.log_dir, project='se3-transformer'))
     logger = LoggerCollection(loggers)
+
+    train_val = pd.read_parquet('../../data/train_val_split.parquet', engine='pyarrow')
+    smiles_list_train = train_val[train_val['full_test'] == False]['molecule_smiles'].values
+    targets_train = torch.tensor(train_val[train_val['full_test'] == False][['binds_BRD4', 'binds_HSA', 'binds_sEH']])
+    smiles_list_val = train_val[train_val['full_test'] == True]['molecule_smiles'].values
+    targets_val = torch.tensor(train_val[train_val['full_test'] == True][['binds_BRD4', 'binds_HSA', 'binds_sEH']])
+    test = pd.read_parquet('../../data/test.parquet', engine='pyarrow')
+    smiles_list_test = test.molecule_smiles.values
+
     datamodule = CustomDataModule(data_dir=args.data_dir,
-                                  smiles_list_train=args.smiles_list_train,
-                                  targets_train=args.targets_train,
-                                  smiles_list_val=args.smiles_list_val,
-                                  targets_val=args.targets_val,
-                                  smiles_list_test=args.smiles_list_test,
+                                  smiles_list_train=smiles_list_train,
+                                  targets_train=targets_train,
+                                  smiles_list_val=smiles_list_val,
+                                  targets_val=targets_val,
+                                  smiles_list_test=smiles_list_test,
                                   batch_size=args.batch_size,
                                   num_workers=args.num_workers)
     model = SE3TransformerPooled(
