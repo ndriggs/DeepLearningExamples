@@ -47,9 +47,6 @@ RUN export NCCL_ROOT=/usr \
         -DUSE_AVX=ON \
     && cmake --build .
 
-
-FROM ${FROM_IMAGE_NAME}
-
 WORKDIR /workspace/se3-transformer
 
 # copy built DGL and install it
