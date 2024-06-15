@@ -29,6 +29,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from se3_transformer.data_loading import CustomDataModule
 from se3_transformer.runtime import gpu_affinity
 from se3_transformer.runtime.arguments import PARSER
 from se3_transformer.runtime.callbacks import BaseCallback
@@ -91,7 +92,14 @@ if __name__ == '__main__':
     if args.wandb:
         loggers.append(WandbLogger(name=f'QM9({args.task})', save_dir=args.log_dir, project='se3-transformer'))
     logger = LoggerCollection(loggers)
-    datamodule = QM9DataModule(**vars(args))
+    datamodule = CustomDataModule(data_dir=args.data_dir,
+                                  smiles_list_train=args.smiles_list_train,
+                                  targets_train=args.targets_train,
+                                  smiles_list_val=args.smiles_list_val,
+                                  targets_val=args.targets_val,
+                                  smiles_list_test=args.smiles_list_test,
+                                  batch_size=args.batch_size,
+                                  num_workers=args.num_workers)
     model = SE3TransformerPooled(
         fiber_in=Fiber({0: datamodule.NODE_FEATURE_DIM}),
         fiber_out=Fiber({0: args.num_degrees * args.num_channels}),

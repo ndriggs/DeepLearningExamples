@@ -113,10 +113,14 @@ class LeashDataset(Dataset):
 
         # Node features
         node_features = []
+        positions = []
         for atom in mol.GetAtoms():
             atom_type = self.atom_types.get(atom.GetAtomicNum(), [0, 0, 0, 0, 0])
             node_features.append(atom_type + [atom.GetAtomicNum()])
+            pos = mol.GetConformer().GetAtomPosition(atom.GetIdx())
+            positions.append([pos.x, pos.y, pos.z])
         g.ndata['feat'] = torch.tensor(node_features, dtype=torch.float32)
+        g.ndata['pos'] = torch.tensor(positions, dtype=torch.float32)
 
         # Edges and edge features
         src, dst, edge_features = [], [], []
@@ -132,8 +136,6 @@ class LeashDataset(Dataset):
         
         return g
 
-#### Continue from Update the DataModule Class: onward
-#### edit so it gives positions
 
 class CustomDataModule(DataModule):
     NODE_FEATURE_DIM = 6  # 5 (one-hot atom type) + 1 (number of protons)
@@ -141,20 +143,26 @@ class CustomDataModule(DataModule):
 
     def __init__(self,
                  data_dir: pathlib.Path,
-                 smiles_list,
-                 targets,
+                 smiles_list_train,
+                 targets_train,
+                 smiles_list_val,
+                 targets_val,
+                 smiles_list_test,
                  batch_size: int = 240,
                  num_workers: int = 8,
                  **kwargs):
         self.data_dir = data_dir  # This needs to be before __init__ so that prepare_data has access to it
         super().__init__(batch_size=batch_size, num_workers=num_workers, collate_fn=self._collate)
-        self.smiles_list = smiles_list
-        self.targets = targets
+        self.smiles_list_train = smiles_list_train
+        self.targets_train = targets_train
+        self.smiles_list_val = smiles_list_val
+        self.targets_val = targets_val
+        self.smiles_list_test = smiles_list_test
         self.batch_size = batch_size
 
-        full_dataset = LeashDataset(smiles_list, targets)
-        self.ds_train, self.ds_val, self.ds_test = random_split(full_dataset, self._get_split_sizes(full_dataset),
-                                                                generator=torch.Generator().manual_seed(0))
+        self.ds_train = LeashDataset(smiles_list_train, targets_train)
+        self.ds_val = LeashDataset(smiles_list_val, targets_val)
+        self.ds_test = LeashDataset(smiles_list_test)
 
     def prepare_data(self):
         # Prepare data if needed (e.g., download, preprocess)
