@@ -30,7 +30,7 @@ import numpy as np
 import torch
 
 from se3_transformer.runtime.loggers import Logger
-from se3_transformer.runtime.metrics import MeanAbsoluteError, MeanAveragePrecision
+from se3_transformer.runtime.metrics import MeanAveragePrecision
 
 
 class BaseCallback(ABC):
@@ -90,7 +90,7 @@ class QM9MetricCallback(BaseCallback):
 
     def __init__(self, logger, prefix=''):
         self.ap = MeanAveragePrecision()
-        self.mae = MeanAbsoluteError()
+        # self.mae = MeanAbsoluteError()
         self.logger = logger
         # self.targets_std = targets_std
         self.prefix = prefix

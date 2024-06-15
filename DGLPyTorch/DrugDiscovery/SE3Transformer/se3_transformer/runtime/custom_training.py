@@ -35,6 +35,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, DistributedSampler
 from tqdm import tqdm
+import pandas as pd
 
 from se3_transformer.data_loading import CustomDataModule
 from se3_transformer.model import SE3TransformerPooled
@@ -207,6 +208,9 @@ if __name__ == '__main__':
         loggers.append(WandbLogger(name=f'QM9({args.task})', save_dir=args.log_dir, project='se3-transformer'))
     logger = LoggerCollection(loggers)
 
+    train_val = pd.read_parquet('../../data/train_val_split.parquet', engine='pyarrow')
+    
+
     datamodule = CustomDataModule(data_dir=args.data_dir,
                                   smiles_list_train=args.smiles_list_train,
                                   targets_train=args.targets_train,
@@ -232,7 +236,7 @@ if __name__ == '__main__':
             logger, args.batch_size * world_size, warmup_epochs=1 if args.epochs > 1 else 0
         )]
     else:
-        callbacks = [QM9MetricCallback(logger, targets_std=datamodule.targets_std, prefix='validation'),
+        callbacks = [QM9MetricCallback(logger, prefix='validation'),
                      QM9LRSchedulerCallback(logger, epochs=args.epochs)]
 
     if is_distributed:
